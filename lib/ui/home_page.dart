@@ -1,10 +1,10 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:films_list/model/movie.dart';
+import 'package:films_list/repository/repository.dart';
 import 'package:films_list/ui/detalhes.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class HomePage extends StatefulWidget {
@@ -15,22 +15,33 @@ class HomePage extends StatefulWidget {
 class _State extends State<HomePage> {
 
   Future<SharedPreferences> _prefs = SharedPreferences.getInstance();
+  SharedPreferences _mPrefs;
   String _movieFiltered = "";
 
-  bool _isLoading = false;
+  List<Movie> _listMovieAux;
+  int _pages = 1;
 
-  List<Movie> _list = List();
-  final GlobalKey<RefreshIndicatorState> _refreshIndicatorKey = GlobalKey<RefreshIndicatorState>();
   final _searchController = TextEditingController();
+  final Repository repository = Repository();
+
+  final StreamController<List<Movie>> _stream = StreamController();
+
+  final ScrollController _scrollController =  ScrollController();
 
   @override
   void initState() {
-    super.initState();
     _doInit();
+    super.initState();
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+    _stream.close();
   }
 
   _doInit() async {
-    final SharedPreferences _mPrefs = await _prefs;
+    _mPrefs  = await _prefs;
     _movieFiltered = _mPrefs.getString("movieFiltered");
 
     if(_movieFiltered == null || _movieFiltered.isEmpty) {
@@ -39,52 +50,40 @@ class _State extends State<HomePage> {
     }
 
     _searchController.text = _movieFiltered;
-    _popularList(_movieFiltered);
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
-  }
-
-  _popularList(String title) async {
-    final timeout = Duration(seconds: 60);
-    final List<Movie> list = List();
-
-    setState(() {
-      _isLoading = true;
-    });
-
-    final response = await http.get(
-      "http://www.omdbapi.com/?apikey=27b47c25&s=${title}", // url base
-      headers: <String, String>{
-        "Content-type": "application/json",
-        "Accept": "application/json",
-        //Coloque aqui a autenticação caso haja
-      },
-    ).timeout(timeout).catchError((err) {
-      print('Erro na busca dos filmes $err');
-    });
-
-    final responseArray = jsonDecode(response.body)['Search'] as List;
-
-    for(int i = 0; i < responseArray.length; i++) {
-      Movie vo = new Movie();
-      vo.title = jsonDecode(response.body)['Search'][i]['Title'];
-      vo.year = int.tryParse(jsonDecode(response.body)['Search'][i]['Year']);
-      vo.imdbID = jsonDecode(response.body)['Search'][i]['imdbID'];
-      vo.type = jsonDecode(response.body)['Search'][i]['Type'];
-      vo.poster = jsonDecode(response.body)['Search'][i]['Poster'];
-
-      print(jsonDecode(response.body)['Search'][i]['Title']);
-
-      list.add(vo);
+    final aux = await repository.lisMovie(_movieFiltered, _pages);
+    if(aux != null) {
+      _stream.add(aux); // preenche a lista
     }
-    setState(() {
-      _isLoading = false;
-      _list = list;
+
+    _scrollController..addListener(() async {
+      if(_scrollController.position.pixels == _scrollController.position.maxScrollExtent) {
+        _pages++;
+        final aux = await repository.lisMovie(_movieFiltered, _pages);
+
+        if(aux != null) {
+          _listMovieAux.addAll(aux.map((e) => e)); // adiciona os filmes à lista
+          _stream.add(_listMovieAux); // incrementa a lista
+        }
+      }
     });
 
+  }
+
+  _searchMovie(String title) async {
+
+    if(title.length > 1) {
+      FocusScope.of(context).requestFocus(new FocusNode()); // fecha o teclado
+
+      setState(() {
+        _pages = 1;
+        _movieFiltered = title;
+      });
+
+      await _mPrefs.setString("movieFiltered", _movieFiltered);
+
+      final aux = await repository.lisMovie(_movieFiltered, _pages);
+      _stream.add(aux);
+    }
   }
   
   @override
@@ -114,10 +113,10 @@ class _State extends State<HomePage> {
                       padding: const EdgeInsets.only(right: 4.0),
                       child: Row(
                         children: <Widget>[
-                          Text(title, style: TextStyle(fontSize: 16, color: Colors.black),),
+                          Text(title, style: TextStyle(fontSize: 16, color: Colors.white),),
                           Padding(
                             padding: const EdgeInsets.only(left: 4.0),
-                            child: Icon(Icons.local_movies, size: 14, color: Colors.black,),
+                            child: Icon(Icons.local_movies, size: 14, color: Colors.white,),
                           )
                         ],
                       ),
@@ -150,16 +149,13 @@ class _State extends State<HomePage> {
                                 controller: _searchController,
                                 decoration: InputDecoration(
                                     border: InputBorder.none,
-                                    prefixIcon: Icon(Icons.search),
+                                    prefixIcon: IconButton(
+                                      icon: Icon(Icons.search), color: Colors.white,
+                                      onPressed: () => _searchMovie(_searchController.text),
+                                    ),
                                     hintText: "Buscar"
                                 ),
-                                onChanged: (value) async {
-                                  await Future.delayed(const Duration(milliseconds: 400), () {
-                                    if(value.length > 1) {
-                                      _popularList(value);
-                                    }
-                                  });
-                                },
+                                onSubmitted: (_) => _searchMovie(_searchController.text),
                               ),
                             ),
 
@@ -175,34 +171,37 @@ class _State extends State<HomePage> {
 
           ];
         },
-        body: RefreshIndicator(
-          key: _refreshIndicatorKey,
-          child: Visibility(
-            visible: !_isLoading,
-            replacement: Center(child: CircularProgressIndicator(backgroundColor: Colors.lightBlue,),),
-            child: Column(
-              children: <Widget>[
-                Container(
-                  width: MediaQuery.of(context).size.width,
-                  child: Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: Container(
-                        padding: const EdgeInsets.only(top: 8.0, bottom: 8.0, left: 16.0, right: 16.0),
-                        child: Center(child: Text(_list.length <= 1 ? "${_list.length} Resultado" : "${_list.length} Resultados", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),)),
+        body: StreamBuilder( //Listener da Stream
+          stream: _stream.stream,
+          builder: (context, snapshot) {
+
+            if(snapshot.hasData) {
+              _listMovieAux = snapshot.data; //Manter os valores durante o incremento da lista
+              final list = snapshot.data;
+
+              return Column(
+                children: <Widget>[
+                  Container(
+                    width: MediaQuery.of(context).size.width,
+                    child: Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Container(
+                          padding: const EdgeInsets.only(top: 8.0, bottom: 8.0, left: 16.0, right: 16.0),
+                          child: Center(child: Text(list.length <= 1 ? "${list.length} Resultado" : "${list.length} Resultados", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),)),
+                        ),
                       ),
                     ),
                   ),
-                ),
 
-                Expanded(
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    controller: ScrollController(),
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    itemCount: _list.length,
-                    itemBuilder: (context, index) {
-                      if(_list != null) {
+                  Expanded(
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      controller: _scrollController,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      itemCount: list.length,
+                      itemBuilder: (context, index) {
+
                         return InkWell(
                           child: Center(
                             child: Card(
@@ -213,65 +212,60 @@ class _State extends State<HomePage> {
                               margin: const EdgeInsets.all(8),
                               child: Padding(
                                 padding: const EdgeInsets.all(18.0),
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: <Widget>[
-                                    CachedNetworkImage(
-                                      height: MediaQuery.of(context).size.height * .45,
-                                      width: MediaQuery.of(context).size.width * .6,
-                                      fit: BoxFit.fill,
-                                      imageUrl: _list[index].poster,
-                                      placeholder: (context, url) => const CircularProgressIndicator(backgroundColor: Colors.blueAccent, strokeWidth: 5,),
-                                      errorWidget: (context, url, error) => Center(child: Icon(Icons.movie_filter, size: 120,)),
-                                    ),
-                                    Column(
-                                      mainAxisAlignment: MainAxisAlignment.start,
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: <Widget>[
-                                        SizedBox(height: 4.0),
-                                        Text('Titulo: ${_list[index].title}'),
-                                        SizedBox(height: 4.0),
-                                        Text('Ano Lançamento: ${_list[index].year}'),
-                                        SizedBox(height: 4.0),
-                                        Text('Tipo: ${_list[index].type}'),
-                                        SizedBox(height: 4.0)
-                                      ],
-                                    ),
-                                  ],
+                                child: Container(
+                                  height: MediaQuery.of(context).size.height * .6,
+                                  width: MediaQuery.of(context).size.width * .6,
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: <Widget>[
+
+                                      Container(
+                                        height: MediaQuery.of(context).size.height * .45,
+                                        width: MediaQuery.of(context).size.width * .6,
+                                        child: CachedNetworkImage(
+                                          fit: BoxFit.fill,
+                                          imageUrl: list[index].poster,
+                                          placeholder: (context, url) => Center(child: const CircularProgressIndicator(backgroundColor: Colors.blueAccent, strokeWidth: 5,)),
+                                          errorWidget: (context, url, error) => Center(child: Icon(Icons.movie_filter, size: 120,)),
+                                        ),
+                                      ),
+                                      Column(
+                                        mainAxisAlignment: MainAxisAlignment.start,
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: <Widget>[
+                                          SizedBox(height: 4.0),
+                                          Text('Titulo: ${list[index].title}'),
+                                          SizedBox(height: 4.0),
+                                          Text('Ano Lançamento: ${list[index].year}'),
+                                          SizedBox(height: 4.0),
+                                          Text('Tipo: ${list[index].type}'),
+                                          SizedBox(height: 4.0)
+                                        ],
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                           onTap: () {
-                            Navigator.push(context, MaterialPageRoute(builder: (context) => Detalhes(imdbID: _list[index].imdbID,)));
+                            Navigator.push(context, MaterialPageRoute(builder: (context) => Detalhes(imdbID: list[index].imdbID,)));
                           },
                         );
-                      } else {
-                        return Center(child: CircularProgressIndicator());
                       }
-                    }
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ),
-          onRefresh: () async => _popularList(_movieFiltered),
+                ],
+              );
+            } else {
+              return Center(child: CircularProgressIndicator(backgroundColor: Colors.blueAccent[100],),);
+            }
+          }
         ),
       ),
-      resizeToAvoidBottomPadding: false,// evitar que o teclado aperto o conteúdo
+      resizeToAvoidBottomPadding: false,// evitar que o teclado aperte o conteúdo
     );
   }
-}
-
-class Movie {
-  String title;
-  int year;
-  String imdbID;
-  String type;
-  String poster;
-
-  Movie({this.title, this.year, this.poster,this.imdbID, this.type});
-
 }
