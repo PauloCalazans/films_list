@@ -4,9 +4,9 @@ import 'package:films_list/repository/repository.dart';
 import 'package:flutter/material.dart';
 
 class Detalhes extends StatefulWidget {
-  final String imdbID;
+  final String? imdbID;
 
-  const Detalhes({Key key, this.imdbID}) : super(key: key);
+  Detalhes({required this.imdbID});
 
   @override
   _MyPageState createState() => _MyPageState();
@@ -14,7 +14,7 @@ class Detalhes extends StatefulWidget {
 
 class _MyPageState extends State<Detalhes> {
 
-  MovieDetails _movieDetails;
+  MovieDetails _movieDetails = MovieDetails();
   bool _isLoading = false;
 
   final Repository repository = Repository();
@@ -22,7 +22,9 @@ class _MyPageState extends State<Detalhes> {
   @override
   void initState() {
     super.initState();
-    _doInit();
+    if(mounted) {
+      _doInit();
+    }
   }
 
   _doInit() async {
@@ -52,19 +54,10 @@ class _MyPageState extends State<Detalhes> {
         title: Text(title),
         centerTitle: true,
       ),
-      body: _isLoading ? Center(child: CircularProgressIndicator(backgroundColor: Colors.blueAccent[100], strokeWidth: 5,))
-      : _movieDetails == null
-        ? Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Text("Ocorreu um erro na busca dos detalhes"),
-
-              OutlineButton.icon(onPressed: () => Navigator.pop(context), icon: Icon(Icons.error_outline), label: Text("Voltar")),
-            ],
-          ),
-        )
-        : Center(
+      body: Visibility(
+        visible: _isLoading,
+        child: Center(child: CircularProgressIndicator(backgroundColor: Colors.blueAccent[100], strokeWidth: 5,)),
+        replacement: Center(
           child: Column(
             children: <Widget>[
               Expanded(
@@ -78,7 +71,7 @@ class _MyPageState extends State<Detalhes> {
                           child: CachedNetworkImage(
                             height: MediaQuery.of(context).size.height * .45,
                             fit: BoxFit.fitHeight,
-                            imageUrl: _movieDetails.poster,
+                            imageUrl: _movieDetails.poster ?? '',
                             placeholder: (context, url) => const CircularProgressIndicator(backgroundColor: Colors.blueAccent,),
                             errorWidget: (context, url, error) => Center(child: Icon(Icons.movie_filter, size: 120,)),
                           ),
@@ -106,15 +99,16 @@ class _MyPageState extends State<Detalhes> {
                               Text('Gênero: ${_movieDetails.genre}'),
                               SizedBox(height: 4.0,),
                               Text('Sinopse: ${_movieDetails.plot}', textAlign: TextAlign.justify,),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                  )
-                ],
+                      ],
+                    )
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       )
     );

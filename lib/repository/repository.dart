@@ -9,14 +9,14 @@ int totalResults = 10;
 
 class Repository {
 
-  Future<List<Movie>> lisMovie(String movie, int page) async {
+  Future<List<Movie>> lisMovie(String? movie, int page) async {
 
-    final List<Movie> listResponse = List();
+    final List<Movie> listResponse = [];
     final url = "http://www.omdbapi.com/?apikey=27b47c25&s=$movie&page=$page"; // url base
 
     try {
       final response = await http.get(
-        url, // url base
+        Uri.parse(url), // url base
         headers: <String, String>{
           "Content-type": "application/json",
           "Accept": "application/json",
@@ -31,25 +31,23 @@ class Repository {
         for(int i = 0; i < aux.length; i++) {
           listResponse.add(Movie.fromMap(aux[i]));
         }
-
-        return listResponse;
       }
 
-      return null;
+      return listResponse;
 
     } catch (e) {
       print('Erro na busca dos filmes $e');
-      return null;
+      return [];
     }
 
   }
 
-  Future<MovieDetails> movieDetails(String imdbID) async {
+  Future<MovieDetails> movieDetails(String? imdbID) async {
 
     try {
 
       final response = await http.get(
-        "http://www.omdbapi.com/?apikey=27b47c25&i=$imdbID&plot=full", // url base
+        Uri.parse("http://www.omdbapi.com/?apikey=27b47c25&i=$imdbID&plot=full"), // url base
         headers: <String, String>{
           "Content-type": "application/json",
           "Accept": "application/json",
@@ -61,10 +59,10 @@ class Repository {
         return MovieDetails.fromMap(jsonDecode(response.body));
       }
 
-      return null;
+      return MovieDetails();
     } catch(e) {
       print('Erro ao buscar por ID $e');
-      return null;
+      throw Exception();
     }
 
   }

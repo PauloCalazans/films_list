@@ -15,16 +15,16 @@ class HomePage extends StatefulWidget {
 class _State extends State<HomePage> {
 
   Future<SharedPreferences> _prefs = SharedPreferences.getInstance();
-  SharedPreferences _mPrefs;
-  String _movieFiltered = "";
+  late SharedPreferences _mPrefs;
+  String? _movieFiltered = "";
 
-  List<Movie> _listMovieAux;
+  List<Movie>? _listMovieAux;
   int _pages = 1;
 
   final _searchController = TextEditingController();
   final Repository repository = Repository();
 
-  final StreamController<List<Movie>> _stream = StreamController();
+  final StreamController<List<Movie>?> _stream = StreamController();
 
   final ScrollController _scrollController =  ScrollController();
 
@@ -44,26 +44,22 @@ class _State extends State<HomePage> {
     _mPrefs  = await _prefs;
     _movieFiltered = _mPrefs.getString("movieFiltered");
 
-    if(_movieFiltered == null || _movieFiltered.isEmpty) {
+    if(_movieFiltered == null || _movieFiltered!.isEmpty) {
       _movieFiltered = "avengers";
-      await _mPrefs.setString("movieFiltered", _movieFiltered);
+      await _mPrefs.setString("movieFiltered", _movieFiltered!);
     }
 
-    _searchController.text = _movieFiltered;
+    _searchController.text = _movieFiltered!;
     final aux = await repository.lisMovie(_movieFiltered, _pages);
-    if(aux != null) {
-      _stream.add(aux); // preenche a lista
-    }
+    _stream.add(aux); // preenche a lista
 
     _scrollController..addListener(() async {
       if(_scrollController.position.pixels == _scrollController.position.maxScrollExtent) {
         _pages++;
         final aux = await repository.lisMovie(_movieFiltered, _pages);
 
-        if(aux != null) {
-          _listMovieAux.addAll(aux.map((e) => e)); // adiciona os filmes à lista
-          _stream.add(_listMovieAux); // incrementa a lista
-        }
+        _listMovieAux!.addAll(aux.map((e) => e)); // adiciona os filmes à lista
+        _stream.add(_listMovieAux); // incrementa a lista
       }
     });
 
@@ -79,7 +75,7 @@ class _State extends State<HomePage> {
         _movieFiltered = title;
       });
 
-      await _mPrefs.setString("movieFiltered", _movieFiltered);
+      await _mPrefs.setString("movieFiltered", _movieFiltered!);
 
       final aux = await repository.lisMovie(_movieFiltered, _pages);
       _stream.add(aux);
@@ -171,13 +167,13 @@ class _State extends State<HomePage> {
 
           ];
         },
-        body: StreamBuilder( //Listener da Stream
+        body: StreamBuilder<List<Movie>?>( //Listener da Stream
           stream: _stream.stream,
           builder: (context, snapshot) {
 
             if(snapshot.hasData) {
               _listMovieAux = snapshot.data; //Manter os valores durante o incremento da lista
-              final list = snapshot.data;
+              final list = snapshot.data!;
 
               return Column(
                 children: <Widget>[
@@ -226,7 +222,7 @@ class _State extends State<HomePage> {
                                         width: MediaQuery.of(context).size.width * .6,
                                         child: CachedNetworkImage(
                                           fit: BoxFit.fill,
-                                          imageUrl: list[index].poster,
+                                          imageUrl: list[index].poster ?? '',
                                           placeholder: (context, url) => Center(child: const CircularProgressIndicator(backgroundColor: Colors.blueAccent, strokeWidth: 5,)),
                                           errorWidget: (context, url, error) => Center(child: Icon(Icons.movie_filter, size: 120,)),
                                         ),
@@ -251,7 +247,7 @@ class _State extends State<HomePage> {
                             ),
                           ),
                           onTap: () {
-                            Navigator.push(context, MaterialPageRoute(builder: (context) => Detalhes(imdbID: list[index].imdbID,)));
+                            Navigator.push(context, MaterialPageRoute(builder: (context) => Detalhes(imdbID: list[index].imdbID)));
                           },
                         );
                       }
@@ -265,7 +261,7 @@ class _State extends State<HomePage> {
           }
         ),
       ),
-      resizeToAvoidBottomPadding: false,// evitar que o teclado aperte o conteúdo
+      resizeToAvoidBottomInset: false,// evitar que o teclado aperte o conteúdo
     );
   }
 }
